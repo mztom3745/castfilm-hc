@@ -6,6 +6,7 @@ from PIL import Image
 from torchvision import transforms
 from mobilenetv3_small.mobilenetv3_small import mobilenet_v3_small
 from .defect_config import DefectConfig
+from config.constant import zsz_Constants
 from detect_core.castfilm_detection.detection_statistics import CastFilmDetectionStatistics
 from loguru import logger
 from typing import Optional, Tuple, Union
@@ -53,8 +54,9 @@ class DefectClassifier:
 
         # 初始化统计计算器
         self.stats_calculator = CastFilmDetectionStatistics()
-        base_dark_threshold = getattr(DefectConfig, 'DARK_VALUE', 0.3)
-        self.dark_ratio_threshold = float(getattr(DefectConfig, 'DARK_RATIO_THRESHOLD', base_dark_threshold))
+        # base_dark_threshold = getattr(DefectConfig, 'DARK_VALUE', 0.3)
+        # self.dark_ratio_threshold = float(getattr(DefectConfig, 'DARK_RATIO_THRESHOLD', base_dark_threshold))
+        self.dark_ratio_threshold = zsz_Constants.DARK_RATIO
 
     def load_model(self):
         """加载分类模型"""

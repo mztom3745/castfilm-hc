@@ -9,14 +9,14 @@ from loguru import logger
 from detect_core.defect_config import DefectConfig
 from detect_core.castfilm_detection.api import analyze_array
 from detect_core.castfilm_detection.result import DetectionResult
-
+from config.constant import zsz_Constants
 
 class CastFilmDefectDetector:
     """适配 CastFilm 新检测算法的包装器，保持 detect_core 接口。"""
 
     def __init__(self, min_component: int | None = None, blur_mode: str | None = None, profile: bool = False):
-        base_min = max(10, getattr(DefectConfig, "DETECT_AREA_MIN", 8))
-        self.min_component = max(1, int(min_component if min_component is not None else base_min))
+        # base_min = max(10, getattr(DefectConfig, "DETECT_AREA_MIN", 8))
+        self.min_component = zsz_Constants.MIN_PIXELS
         self.blur_mode = blur_mode or "opencv"
         self.profile = profile
         self.default_left = int(getattr(DefectConfig, "LEFT_EDGE_X", 0))

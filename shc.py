@@ -9,7 +9,6 @@ import torch
 from detect_core.castfilm_detector import CastFilmDefectDetector
 from detect_core.defect_classifier import DefectClassifier
 from detect_core.defect_config import DefectConfig
-from utils.light_util import light_judge  # ✅ 光照检测函数
 
 
 def imread_unicode(path, flags=cv2.IMREAD_GRAYSCALE):
@@ -35,28 +34,34 @@ def process_dataset(classify_result, count):
         - 取 size_index → SIZE_LIST 名称
         - 在 count[defect_class][size_name] 里 +1
     """
-    cut_images = classify_result.get('cut_images', [])
-    defect_infos = classify_result.get('defect_infos', [])
+    cut_images = classify_result.get("cut_images", [])
+    defect_infos = classify_result.get("defect_infos", [])
     for _, defect_info in zip(cut_images, defect_infos):
-        defect_class = defect_info.get('defect_class', '其它')
-        size_index = defect_info.get('size_index', 0)
+        defect_class = defect_info.get("defect_class", "其它")
+        size_index = defect_info.get("size_index", 0)
         if 0 <= size_index < len(DefectConfig.SIZE_LIST):
             size_name = DefectConfig.SIZE_LIST[size_index]
+            # 兜底：如果分类器返回了未预设的类别名，自动归到“其它”
+            if defect_class not in count:
+                defect_class = "其它"
             count[defect_class][size_name] += 1
 
 
 # ------------------------
-# 2. 单个子文件夹处理：光照检测 + 分割 + 分类 + 统计
+# 2. 单个子文件夹处理：分割 + 分类 + 统计
 #    👉 完全单线程顺序处理
 # ------------------------
-def process_single_subfolder(subfolder_path, batch_size=6, queue_maxsize=200,
-                             classifier=None):
+def process_single_subfolder(
+    subfolder_path,
+    batch_size=6,
+    queue_maxsize=200,
+    classifier=None,
+):
     """
     处理单个子文件夹（单线程版本）：
         1) 从子文件夹读取所有图像
-        2) 对首张图做光照检测
-        3) 顺序处理每一张：分割 -> 分类 -> 统计
-    返回： (子文件夹路径, 光照检测结果字符串, 统计字典)
+        2) 顺序处理每一张：分割 -> 分类 -> 统计
+    返回： (子文件夹路径, 统计字典)
     """
     print(f"\n📂 开始处理子文件夹：{os.path.basename(subfolder_path)}")
 
@@ -68,25 +73,7 @@ def process_single_subfolder(subfolder_path, batch_size=6, queue_maxsize=200,
     ]
     if not image_files:
         print(f"[WARN] 未找到图像文件：{os.path.basename(subfolder_path)}")
-        return subfolder_path, "⚠️ 无图像", {}
-
-    # ✅ 光照检测
-    first_img_path = image_files[0]
-    print(f"\n📸 光照检测（样本：{os.path.basename(first_img_path)}）")
-    light_result, light_pass = light_judge(
-        input_image=first_img_path,
-        background_range=(200, 225),
-        num_slices=25,
-        defect_gray_threshold=190,
-        left=DefectConfig.LEFT_EDGE_X,
-        right=DefectConfig.RIGHT_EDGE_X,
-        too_dark=0.2,
-        too_light=50,
-        num_chunk=5,
-    )
-    print(f"💡 光照检测结果：{light_result}")
-    if not light_pass:
-        print(f"[WARN] 光照检测未通过，但继续执行该文件夹缺陷检测")
+        return subfolder_path, {}
 
     # 初始化统计
     categories = ["黑点", "晶点", "纤维", "其它"]
@@ -115,11 +102,9 @@ def process_single_subfolder(subfolder_path, batch_size=6, queue_maxsize=200,
             # 🔥 每张图输出缺陷数量
             print(f"[缺陷数量] {os.path.basename(image_path)}: {len(defects)}")
 
-            # 分类（这里简单用 batch_size=1，也可以自己攒 batch 再送）
+            # 分类（仍然按 1 张图一送；如果你后续要攒 batch，再改这里）
             cls_start = time.perf_counter()
-            classify_results = classifier.classify_defects_batch(
-                [img_gray], [defects]
-            )
+            classify_results = classifier.classify_defects_batch([img_gray], [defects])
             cls_time = time.perf_counter() - cls_start
 
             # 统计
@@ -150,24 +135,26 @@ def process_single_subfolder(subfolder_path, batch_size=6, queue_maxsize=200,
     gc.collect()
 
     # 🔥 子文件夹缺陷总数
-    total_defects = sum(
-        count[cat][size]
-        for cat in count
-        for size in count[cat]
-    )
+    total_defects = sum(count[cat][size] for cat in count for size in count[cat])
     print(f"📊 子文件夹缺陷总数: {total_defects}")
 
     print(f"✅ 子文件夹完成：{os.path.basename(subfolder_path)}")
-    return subfolder_path, light_result, count
+    return subfolder_path, count
 
 
 # ------------------------
 # 3. 多子文件夹批量处理 + 汇总报告
-#    👉 外层顺序遍历子文件夹，不再用进程池
+#    👉 外层顺序遍历子文件夹
 # ------------------------
-def process_multi_subfolders(root_input_folder, root_output_folder,
-                             batch_size=6, max_workers=8, queue_maxsize=200,
-                             report_name_level=1, custom_name=None):
+def process_multi_subfolders(
+    root_input_folder,
+    root_output_folder,
+    batch_size=6,
+    max_workers=8,
+    queue_maxsize=200,
+    report_name_level=1,
+    custom_name=None,
+):
     """
     多文件夹批量检测（单线程版本）：
         - root_input_folder 下每个子目录依次处理
@@ -218,41 +205,36 @@ def process_multi_subfolders(root_input_folder, root_output_folder,
 
     # 🔥 计算所有子文件夹总缺陷数量
     grand_total = 0
-    for _, _, count in results:
+    for _, count in results:
         if not count:
             continue
-        grand_total += sum(
-            count[cat][size]
-            for cat in count
-            for size in count[cat]
-        )
+        grand_total += sum(count[cat][size] for cat in count for size in count[cat])
 
     # ✅ 写出汇总报告
     with open(report_path, "w", encoding="utf-8") as f:
-        f.write("多文件夹缺陷检测汇总报告\n")
+        f.write("多文件夹缺陷检测汇总报告（无光照检测）\n")
         f.write(f"生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"输入根目录：{root_input_folder}\n")
         f.write("=" * 80 + "\n\n")
 
-        for subfolder_path, light_result, count in results:
+        for subfolder_path, count in results:
             f.write(f"文件夹: {os.path.basename(subfolder_path)}\n")
-            f.write(f"光照检测: {light_result}\n")
             if count:
-                # 计算该子文件夹缺陷总数
                 subfolder_total = sum(
-                    count[cat][size]
-                    for cat in count
-                    for size in count[cat]
+                    count[cat][size] for cat in count for size in count[cat]
                 )
                 f.write(f"缺陷总数: {subfolder_total}\n")
                 f.write("class_name " + " ".join(DefectConfig.SIZE_LIST) + "\n")
                 for cat in ["黑点", "晶点", "纤维", "其它"]:
-                    f.write(f"{cat} " + " ".join(str(count[cat][s]) for s in DefectConfig.SIZE_LIST) + "\n")
+                    f.write(
+                        f"{cat} "
+                        + " ".join(str(count[cat][s]) for s in DefectConfig.SIZE_LIST)
+                        + "\n"
+                    )
             else:
                 f.write("缺陷统计: 无（该文件夹无图像或处理失败）\n")
             f.write("-" * 80 + "\n\n")
 
-        # 总缺陷数量
         f.write(f"所有子文件夹总缺陷数量: {grand_total}\n")
 
     print(f"🎯 所有子文件夹总缺陷数量：{grand_total}")
@@ -266,9 +248,9 @@ if __name__ == "__main__":
     process_multi_subfolders(
         root_input_folder=ROOT_INPUT_FOLDER,
         root_output_folder=ROOT_OUTPUT_FOLDER,
-        batch_size=4,          # 现在没实际用到，但可以后面扩展成手动攒 batch
-        max_workers=1,         # 单线程版本，这个参数已无效，仅占位
-        queue_maxsize=512,
+        batch_size=4,          # 目前仍未实际用到（你后续要攒 batch 可用）
+        max_workers=1,         # 单线程版本，这个参数无效，仅占位
+        queue_maxsize=512,     # 目前未实际用到（占位）
         report_name_level=2,
-        # custom_name=\"film_batchA\"
+        # custom_name="film_batchA"
     )

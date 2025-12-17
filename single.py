@@ -172,37 +172,54 @@ def classify_all_images_in_folder(input_folder: str, output_folder: str):
 
         per_image_records.append((image_name, img_stats, total_patches))
 
-    # ===== 写出整体统计到 txt =====
+        # ===== 写出整体统计到 txt =====
     summary_path = os.path.join(base_output, "classification_summary.txt")
     with open(summary_path, "w", encoding="utf-8") as f:
-        f.write("CastFilm 单图分类结果汇总\n")
+        f.write("CastFilm 分类结果全局汇总（类别 × 尺寸）\n")
         f.write(f"输入文件夹: {os.path.abspath(input_folder)}\n")
         f.write(f"输出文件夹: {base_output}\n")
         f.write("=" * 80 + "\n\n")
 
-        # 每张图的统计
-        for image_name, img_stats, total_patches in per_image_records:
-            f.write(f"图像: {image_name}\n")
-            f.write(f"  缺陷总数(裁剪数): {total_patches}\n")
-            for size_name in sorted(img_stats.keys()):
-                f.write(f"  尺寸: {size_name}\n")
-                for cls_name, cnt in img_stats[size_name].items():
-                    f.write(f"    - 类别: {cls_name}  数量: {cnt}\n")
-            f.write("-" * 80 + "\n\n")
+        # ✅ 固定尺寸顺序：直接用 DefectConfig.SIZE_LIST（就是你说的那 11 个）
+        size_order = list(DefectConfig.SIZE_LIST)
 
-        # 全部图像的全局汇总
-        f.write("\n====== 全部图像汇总（按 尺寸 -> 类别） ======\n")
+        # ✅ 确保每个尺寸都存在（哪怕 0）
+        for s in size_order:
+            global_stats.setdefault(s, {})
+
+        # ✅ 收集全局所有类别（所有尺寸里的 defect_class）
+        all_classes = set()
+        for s in size_order:
+            all_classes.update(global_stats[s].keys())
+        class_order = sorted(all_classes)  # 你如果想固定类别顺序，这里换成你的列表即可
+
+        # —— 写表头（第一行：尺寸）——
+        # 形式：类别\尺寸 | _25 | 25-50 | ... | O800 | TOTAL
+        f.write("类别\\尺寸\t" + "\t".join(size_order) + "\tTOTAL\n")
+
         grand_total = 0
-        for size_name in sorted(global_stats.keys()):
-            f.write(f"尺寸: {size_name}\n")
-            for cls_name, cnt in global_stats[size_name].items():
-                f.write(f"  - 类别: {cls_name}  数量: {cnt}\n")
-                grand_total += cnt
-        f.write(f"\n全部图像缺陷总数（裁剪总数）: {grand_total}\n")
 
-    print("\n========================")
-    print(f"📄 所有图像的分类统计已写入: {summary_path}")
-    print(f"✅ 缺陷小图已按 “尺寸 / 类别” 存储在: {base_output}")
+        # —— 每一行一个类别 —— 
+        for cls in class_order:
+            row_total = 0
+            row_vals = []
+            for s in size_order:
+                cnt = int(global_stats[s].get(cls, 0))
+                row_vals.append(str(cnt))
+                row_total += cnt
+
+            grand_total += row_total
+            f.write(f"{cls}\t" + "\t".join(row_vals) + f"\t{row_total}\n")
+
+        # —— 最后一行 TOTAL（每个尺寸的总数 + 全部总数）——
+        col_totals = []
+        for s in size_order:
+            col_sum = sum(int(global_stats[s].get(cls, 0)) for cls in class_order)
+            col_totals.append(str(col_sum))
+        f.write("TOTAL\t" + "\t".join(col_totals) + f"\t{grand_total}\n")
+
+        f.write("\n" + "=" * 80 + "\n")
+        f.write(f"全部图像缺陷总数（裁剪总数）: {grand_total}\n")
 
 
 if __name__ == "__main__":

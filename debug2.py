@@ -139,6 +139,87 @@ def _save_bool_mask_as_gray(
     img = Image.fromarray(mask_u8)
     img.save(out_path)
 
+def save_boxes_overlay2(
+    gray_img: np.ndarray,
+    boxes: List["BoundingBox"],
+    out_path: Path,
+    membrane_bounds: Optional[Tuple[int, int]] = None,
+    box_color=(0, 255, 0, 70),         # (R,G,B,A)
+    boundary_color=(0, 200, 0, 180),   # (R,G,B,A)
+    line_width: int = 2,
+    boundary_width: int = 3,
+) -> None:
+    """
+    输入必须是 numpy 灰度图：
+      - float / int 均可
+      - shape: (H, W)
+
+    会先按你的规则做“反色可视化”：
+      out = clip(255 - gray_img, 0, 255).astype(uint8)
+
+    然后在反色后的图上叠加半透明缺陷框与膜边界，最后保存到 out_path。
+    """
+    if not isinstance(gray_img, np.ndarray):
+        raise TypeError(f"gray_img must be np.ndarray, got {type(gray_img)}")
+    if gray_img.ndim != 2:
+        raise ValueError(f"gray_img must be 2D grayscale (H,W), got shape={gray_img.shape}")
+
+    # ---------- 1) 按你的 _save_float_array_as_gray 方式反色并转 uint8 ----------
+    arr = np.asarray(gray_img, dtype=np.float32)
+    arr = np.nan_to_num(arr, nan=0.0, posinf=255.0, neginf=0.0)
+
+    inv = 255.0 - arr
+    inv = np.clip(inv, 0, 255).astype(np.uint8)
+
+    # ---------- 2) 转 PIL，并准备 RGBA 叠加层 ----------
+    base = Image.fromarray(inv).convert("RGBA")
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    W, H = base.size
+
+    # ---------- 3) 画膜边界 ----------
+    if membrane_bounds is not None:
+        left, right = membrane_bounds
+        left = int(max(0, min(left, W - 1)))
+        right = int(max(0, min(right, W - 1)))
+        draw.line([(left, 0), (left, H - 1)], fill=boundary_color, width=boundary_width)
+        draw.line([(right, 0), (right, H - 1)], fill=boundary_color, width=boundary_width)
+
+    # ---------- 4) 画缺陷框（半透明边框；如需填充见注释） ----------
+    for b in boxes:
+        left = int(getattr(b, "left"))
+        top = int(getattr(b, "top"))
+        right = int(getattr(b, "right"))
+        bottom = int(getattr(b, "bottom"))
+
+        # 越界保护 + 方向修正
+        left = max(0, min(left, W - 1))
+        right = max(0, min(right, W - 1))
+        top = max(0, min(top, H - 1))
+        bottom = max(0, min(bottom, H - 1))
+        if right < left:
+            left, right = right, left
+        if bottom < top:
+            top, bottom = bottom, top
+
+        # 你之前的 +1 逻辑：画到像素边界更贴合
+        r2 = min(W, right + 1)
+        b2 = min(H, bottom + 1)
+
+        draw.rectangle([(left, top), (r2, b2)], outline=box_color, width=line_width)
+
+        # 若你要半透明填充，打开下面两行即可：
+        # fill_color = (box_color[0], box_color[1], box_color[2], min(box_color[3], 60))
+        # draw.rectangle([(left, top), (r2, b2)], fill=fill_color)
+
+    # ---------- 5) 合成并保存 ----------
+    out = Image.alpha_composite(base, overlay)
+
+    ensure_directory(out_path.parent)
+
+    # 统一转 RGB 保存，避免 jpg 不支持 alpha 的坑
+    out.convert("RGB").save(out_path)
 
 def save_boxes_overlay(
     gray_img: Image.Image,
@@ -423,18 +504,19 @@ def determine_defect_threshold(
     # === mean + 2*std（新增 black_threshold）===
     
     # === base 仍用原逻辑 ===
-    
+    from config.constant import zsz_Constants
     median_value_ = median_value 
     robust = median_value + 3.0 * (1.4826 * mad_value if mad_value > 0 else 0.0)
 
-    base = max(25, min(mean_value, median_value_ , 40))
+    base = min(zsz_Constants.MAX_GRAY, max(mean_value, median_value_ , zsz_Constants.MIN_GRAY))
 
     scale = 1.0
     threshold = base * scale
 
     black_threshold1 = mean_value + 2.0 * std_value
     black_threshold2 = median_value + 6.0 * (1.4826 * mad_value if mad_value > 0 else 0.0)
-    dark_margin = min(130, max(100,black_threshold1,black_threshold2))
+    
+    dark_margin = min(zsz_Constants.MAX_DARK, max(zsz_Constants.MIN_DARK,black_threshold1,black_threshold2))
     # === 写入 debug_stats ===
     if debug_stats is not None:
         debug_stats.update(
@@ -540,7 +622,7 @@ def run_segmentation_debug(
         blur_mode=blur_mode,
         debug_dir=diff_dir,
     )
-    # 新增：把所有 < 20 的值强制设为 0
+    # 新增：把所有 < 15 的值强制设为 0
     difference_map = np.where(difference_map < 15, 0, difference_map)
 
     # 3) 阈值（只看膜内像素，此处即全图）
@@ -558,8 +640,7 @@ def run_segmentation_debug(
         membrane_mean=membrane_mean,
         debug_stats=thr_stats,
     )
-    ##使用定值先（40 105 0.2）
-    # 暗背景修正（与 pipeline 一致）
+
 
     thr_stats["threshold_after_bg_adjust"] = threshold_value
     thr_txt_path = img_debug_dir / "threshold_stats.txt"
@@ -581,11 +662,11 @@ def run_segmentation_debug(
         f"(占整图比例={n_raw / (h * w):.6f})"
     )
 
-    _save_bool_mask_as_gray(
-        defect_mask_raw,
-        img_debug_dir / "defect_mask_raw_gray.png",
-        invert = True,
-    )
+    # _save_bool_mask_as_gray(
+    #     defect_mask_raw,
+    #     img_debug_dir / "defect_mask_raw_gray.png",
+    #     invert = True,
+    # )
 
     # 5) suppress_dense_clusters
     print("  ▶ [Step 5 - suppress_dense_clusters] 对稠密区域做抑制")
@@ -594,17 +675,18 @@ def run_segmentation_debug(
         tile_size=256,
         density_threshold=0.08,
     )
+    
     n_after = int(defect_mask_after.sum())
     print(
         f"      抑制后 defect_mask_after 中 True 像素数={n_after} "
         f"(占整图比例={n_after / (h * w):.6f})"
     )
 
-    _save_bool_mask_as_gray(
-        defect_mask_after,
-        img_debug_dir / "defect_mask_after_dense_gray.png",
-        invert = True,
-    )
+    # _save_bool_mask_as_gray(
+    #     defect_mask_after,
+    #     img_debug_dir / "defect_mask_after_dense_gray.png",
+    #     invert = True,
+    # )
 
     # 6) extract_bounding_boxes（注意 dark_margin 的计算）
     # print("  ▶ [Step 6 - 连通域提取] 调用 extract_bounding_boxes")
@@ -614,7 +696,7 @@ def run_segmentation_debug(
     #         DARK_RATIO_MARGIN_MIN,
     #         threshold_value * DARK_RATIO_MARGIN_RATIO,
     #     )
-
+    
     boxes = extract_bounding_boxes(
         defect_mask_after,
         min_pixels=min_component,
@@ -622,10 +704,16 @@ def run_segmentation_debug(
         reference_threshold=threshold_value,
         reference_margin=dark_margin,
     )
-
+    ## 新增合并功能
     print(
         f"      extract_bounding_boxes 得到 boxes={len(boxes)} 个，"
         f"dark_margin={dark_margin:.3f}, threshold_final={threshold_value:.3f}"
+    )
+    from detect_core.zsz.box_merge import merge_overlapping_boxes
+    boxes = merge_overlapping_boxes(boxes)
+
+    print(
+        f"      !!合并后boxes={len(boxes)} 个!!"
     )
 
     if boxes:
@@ -731,21 +819,27 @@ def main() -> None:
         )
 
         print("  ▶ [保存可视化] 缺陷红点 overlay & 连通域框图")
-        save_mask_overlay_red(
-            gray_img,
-            defect_mask_raw,
-            img_debug_dir / "defect_mask_raw_red_overlay.png",
-        )
-        save_mask_overlay_red(
-            gray_img,
-            defect_mask_after,
-            img_debug_dir / "defect_mask_after_dense_red_overlay.png",
-        )
+        # save_mask_overlay_red(
+        #     gray_img,
+        #     defect_mask_raw,
+        #     img_debug_dir / "defect_mask_raw_red_overlay.png",
+        # )
+        # save_mask_overlay_red(
+        #     difference_map,
+        #     defect_mask_after,
+        #     img_debug_dir / "fff_defect_mask_after_dense_red_overlay.png",
+        # )
 
+        save_boxes_overlay2(
+            difference_map,
+            boxes,
+            img_debug_dir / "difference_boxes_overlay.png",
+            membrane_bounds=membrane_bounds,
+        )
         save_boxes_overlay(
             gray_img,
             boxes,
-            img_debug_dir / "boxes_overlay.png",
+            img_debug_dir / "original_boxes_overlay.png",
             membrane_bounds=membrane_bounds,
         )
 

@@ -13,8 +13,9 @@ class BoundingBox:
     bottom: int
     right: int
     pixels: int
+    dark_pixels:int
     dark_ratio: float = 0.0
-
+    
     def as_tuple(self) -> Tuple[int, int, int, int]:
         return (self.left, self.top, self.right, self.bottom)
 
@@ -83,10 +84,12 @@ def extract_bounding_boxes(
                     bottom=max_row,
                     right=max_col,
                     pixels=pixel_count,
+                    dark_pixels = dark_pixels,
                     dark_ratio=ratio,
                 )
             )
     return boxes
+
 
 
 def suppress_dense_clusters(

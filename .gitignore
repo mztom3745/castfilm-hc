@@ -1,1 +1,8 @@
+# VSCode / debug outputs (可选)
+debug_seg_outputs/
 data/
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

@@ -376,9 +376,9 @@ def determine_defect_threshold(
     # percentile_85 = float(np.percentile(sample, 85))
 
     # === 缺陷阈值（保持你当前逻辑）===
-    base = max(
-        zsz_Constants.MIN_GRAY, 
-        min(mean_value, median_value, zsz_Constants.MAX_GRAY)
+    base = min(
+        zsz_Constants.MAX_GRAY, 
+        max(mean_value, median_value, zsz_Constants.MIN_GRAY)
     )
 
     threshold = base
@@ -528,6 +528,10 @@ def analyze_image(
         reference_threshold=threshold_value,
         reference_margin=dark_margin,
     )
+    from detect_core.zsz.box_merge import merge_overlapping_boxes
+    #新增框合并
+    boxes = merge_overlapping_boxes(boxes)
+
     timings["defect_extraction"] = perf_counter() - t0
     
     return (

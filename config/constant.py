@@ -1,13 +1,13 @@
 import os
 class zsz_Constants:
-    WIDTH = 80000
-    MIN_BACKGROUND = 210
-    NOICE_GRAY = 15
-    MIN_GRAY = 25
+    WIDTH = 80000 #基础检测宽度
+    MIN_BACKGROUND = 210 #最低背景值，低于的不看做是背景
+    NOICE_GRAY = 15 #噪声点
+    MIN_GRAY = 25 #识别为缺陷的最小阈值
     MAX_GRAY = 40
-    MIN_DARK = 95
+    MIN_DARK = 95 #识别为黑色区域的最小阈值
     MAX_DARK = 130
-    Normal_BACKGROUND = 220
+    Normal_BACKGROUND = 220 #
     DARK_RATIO = 0.2
     MIN_PIXELS = 8 #最少多少个点算作是缺陷
 
@@ -36,7 +36,7 @@ class Constants:
     ]
     SIZE_RANGES = ["<25um","25-50um", "50-100um", "101-200um", "201-300um", "301-400um"]
 
-
+                       
 
 class Machine_Learning:
     UPPER_BOUND = 190

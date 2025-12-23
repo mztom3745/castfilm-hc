@@ -500,9 +500,13 @@ def analyze_image(
     # dark_margin返回暗点值
     t0 = perf_counter()
     membrane_values = difference_map[membrane_mask]
-    threshold_value, dark_margin = determine_defect_threshold(
-        membrane_values,
-    )
+    
+    #使用固定值先
+    threshold_value, dark_margin = zsz_Constants.GRAY_VALUE , zsz_Constants.DARK_VALUE
+
+    # threshold_value, dark_margin = determine_defect_threshold(
+    #     membrane_values,
+    # )
     
     #背景低于210的地方不会再被计算为背景
     # if background_mean < DARK_BG_SERIOUS:

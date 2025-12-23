@@ -5,16 +5,18 @@ class zsz_Constants:
     MIN_BACKGROUND = 210 #最低背景值，低于的不看做是背景
     NOICE_GRAY = 20 #噪声点
 
-    MIN_GRAY =40 #识别为缺陷的最小阈值
+    MIN_GRAY = 40 #识别为缺陷的最小阈值
     MAX_GRAY = 60
 
     MIN_DARK = 105 #识别为黑色区域的最小阈值
     MAX_DARK = 125
 
-    GRAY_VALUE = 60
-    DARK_VALUE = 115
+    GRAY_VALUE = 35
+    DARK_VALUE = 105
+    GRAY_VALUE_50 = 65
+    DARK_VALUE_50 = 95
     
-    DARK_RATIO = 0.2
+    DARK_RATIO = 0.25
 
     Normal_BACKGROUND = 220 #
     MIN_PIXELS = 8 #最少多少个点算作是缺陷

@@ -59,7 +59,7 @@ def extract_bounding_boxes(
         while stack:
             cy, cx = stack.pop()
             pixel_count += 1
-            if use_reference and reference_map[cy, cx] >= (reference_threshold + margin):
+            if use_reference and reference_map[cy, cx] >= margin:
                 dark_pixels += 1
             if cy < min_row:
                 min_row = cy
@@ -97,14 +97,64 @@ def extract_bounding_boxes(
             #             )
             #         )
             # else:
-            boxes.append(
+            ## 
+
+            if use_reference and _is_equivalent_diameter_between_25_50_um(pixel_count):
+                # 1) 取 ROI（原框范围）
+                y0, y1 = min_row, max_row
+                x0, x1 = min_col, max_col
+
+                roi_binary = binary[y0 : y1 + 1, x0 : x1 + 1]
+                roi_ref = reference_map[y0 : y1 + 1, x0 : x1 + 1]
+
+                # 2) 更高阈值生成 refine mask：>= GRAY_VALUE_50 认为是缺陷
+                refine = (roi_ref >= float(zsz_Constants.GRAY_VALUE_50))
+
+                # 3) 和原始候选缺陷 mask 取交集（很重要，防止把背景噪声引入）
+                refine &= roi_binary
+
+                # 4) 在 ROI 内做 DFS，可能得到多个新框，也可能为空
+                refined_components = _dfs_boxes_in_binary(refine, min_pixels=min_pixels)
+
+                if refined_components:
+                    for r_top, r_left, r_bottom, r_right, r_pixels in refined_components:
+                        # 5) 把 ROI 坐标转回全图坐标
+                        top = y0 + r_top
+                        left = x0 + r_left
+                        bottom = y0 + r_bottom
+                        right = x0 + r_right
+
+                        # 重新计算 dark_pixels / ratio（基于 reference_map & threshold）
+                        # 这里按照 “>= GRAY_VALUE_50” 的像素数作为 dark_pixels（定义更一致）
+                        roi_ref2 = reference_map[top : bottom + 1, left : right + 1]
+                        # roi_bin2 = binary[top : bottom + 1, left : right + 1]
+                        # 注意：只统计仍在 binary 内的像素
+                        dark_pixels2 = int(np.sum(roi_ref2 >= float(zsz_Constants.DARK_VALUE_50)))
+                        # pixels2 = int(np.sum(roi_bin2))
+                        ratio2 = (dark_pixels2 / r_pixels) if r_pixels > 0 else 0.0
+
+                        boxes.append(
+                            BoundingBox(
+                                top=top,
+                                left=left,
+                                bottom=bottom,
+                                right=right,
+                                pixels=r_pixels,          # 或者用 r_pixels（refine 连通域像素数）
+                                dark_pixels=dark_pixels2,
+                                dark_ratio=ratio2,
+                            )
+                        )
+                # refined_components 为空：表示该候选框在更高阈值下“消失”，那就不 append（即被过滤掉）
+            else:
+                # ✅ 非 25~50um 或没 reference_map：走原逻辑
+                boxes.append(
                     BoundingBox(
                         top=min_row,
                         left=min_col,
                         bottom=max_row,
                         right=max_col,
                         pixels=pixel_count,
-                        dark_pixels = dark_pixels,
+                        dark_pixels=dark_pixels,
                         dark_ratio=ratio,
                     )
                 )
@@ -113,6 +163,55 @@ def extract_bounding_boxes(
 import math
 from detect_core.defect_config import DefectConfig
 
+
+
+def _dfs_boxes_in_binary(
+    binary: np.ndarray,
+    min_pixels: int,
+) -> List[Tuple[int, int, int, int, int]]:
+    """
+    对一个 bool mask(binary) 做 8 邻域 DFS，返回若干连通域的框：
+    (top, left, bottom, right, pixels)
+    坐标是 binary 的局部坐标（从 0 开始）。
+    """
+    height, width = binary.shape
+    visited = np.zeros_like(binary, dtype=bool)
+    coords = np.argwhere(binary)
+    if coords.size == 0:
+        return []
+
+    neighbors = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+    out = []
+
+    for y, x in coords:
+        if visited[y, x]:
+            continue
+        stack = [(y, x)]
+        visited[y, x] = True
+
+        min_row = max_row = y
+        min_col = max_col = x
+        pixel_count = 0
+
+        while stack:
+            cy, cx = stack.pop()
+            pixel_count += 1
+            if cy < min_row: min_row = cy
+            if cy > max_row: max_row = cy
+            if cx < min_col: min_col = cx
+            if cx > max_col: max_col = cx
+
+            for dy, dx in neighbors:
+                ny, nx = cy + dy, cx + dx
+                if 0 <= ny < height and 0 <= nx < width:
+                    if binary[ny, nx] and not visited[ny, nx]:
+                        visited[ny, nx] = True
+                        stack.append((ny, nx))
+
+        if pixel_count >= min_pixels:
+            out.append((min_row, min_col, max_row, max_col, pixel_count))
+
+    return out
 
 def _is_equivalent_diameter_between_25_50_um(
     pixel_count: int,

@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import math
-
+from config.constant import  zsz_Constants
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -504,7 +504,6 @@ def determine_defect_threshold(
     # === mean + 2*std（新增 black_threshold）===
     
     # === base 仍用原逻辑 ===
-    from config.constant import zsz_Constants
     robust0 =  median_value + 1.0 * (1.4826 * mad_value if mad_value > 0 else 0.0)
 
     base = max(zsz_Constants.MIN_GRAY, min(robust0, mean_value , zsz_Constants.MAX_GRAY))
@@ -641,7 +640,8 @@ def run_segmentation_debug(
         membrane_mean=membrane_mean,
         debug_stats=thr_stats,
     )
-
+    
+    threshold_value, dark_margin = zsz_Constants.GRAY_VALUE , zsz_Constants.DARK_VALUE
 
     thr_stats["threshold_after_bg_adjust"] = threshold_value
     thr_txt_path = img_debug_dir / "threshold_stats.txt"

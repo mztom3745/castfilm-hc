@@ -41,7 +41,9 @@ class StatisticsCalculator:
 
     def statistical_datas(self, statistical_data, image):
         width, height = image.shape
-        area = width * height * AREA_PER_PIXELS ## 平方微米
+        # 恒定8cm的宽度（80000）
+        from config.constant import zsz_Constants
+        area = zsz_Constants.WIDTH * height * AREA_PER_PIXELS ## 平方微米
         statistical_data["area_total"] += area
         ditance = (height * DefectConfig.UM_PER_PIXEL) / 1000000
         statistical_data["distance_total"] += ditance

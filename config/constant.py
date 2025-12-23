@@ -1,14 +1,22 @@
 import os
 class zsz_Constants:
-    WIDTH = 80000 #基础检测宽度
+    BASE_HALF_PIXEL = 5000 #认为最中间的1万像素都是膜
+    WIDTH = 80000 #基础检测宽度(um)
     MIN_BACKGROUND = 210 #最低背景值，低于的不看做是背景
-    NOICE_GRAY = 15 #噪声点
-    MIN_GRAY = 25 #识别为缺陷的最小阈值
-    MAX_GRAY = 40
-    MIN_DARK = 95 #识别为黑色区域的最小阈值
-    MAX_DARK = 130
-    Normal_BACKGROUND = 220 #
+    NOICE_GRAY = 20 #噪声点
+
+    MIN_GRAY =40 #识别为缺陷的最小阈值
+    MAX_GRAY = 60
+
+    MIN_DARK = 105 #识别为黑色区域的最小阈值
+    MAX_DARK = 125
+
+    GRAY_VALUE = 60
+    DARK_VALUE = 115
+    
     DARK_RATIO = 0.2
+
+    Normal_BACKGROUND = 220 #
     MIN_PIXELS = 8 #最少多少个点算作是缺陷
 
 class Constants:

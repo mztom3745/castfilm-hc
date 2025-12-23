@@ -505,18 +505,18 @@ def determine_defect_threshold(
     
     # === base 仍用原逻辑 ===
     from config.constant import zsz_Constants
-    median_value_ = median_value 
-    robust = median_value + 3.0 * (1.4826 * mad_value if mad_value > 0 else 0.0)
+    robust0 =  median_value + 1.0 * (1.4826 * mad_value if mad_value > 0 else 0.0)
 
-    base = min(zsz_Constants.MAX_GRAY, max(mean_value, median_value_ , zsz_Constants.MIN_GRAY))
+    base = max(zsz_Constants.MIN_GRAY, min(robust0, mean_value , zsz_Constants.MAX_GRAY))
 
     scale = 1.0
     threshold = base * scale
 
     black_threshold1 = mean_value + 2.0 * std_value
     black_threshold2 = median_value + 6.0 * (1.4826 * mad_value if mad_value > 0 else 0.0)
+    robust = median_value + 3.0 * (1.4826 * mad_value if mad_value > 0 else 0.0)
     
-    dark_margin = min(zsz_Constants.MAX_DARK, max(zsz_Constants.MIN_DARK,black_threshold1,black_threshold2))
+    dark_margin = min(zsz_Constants.MAX_DARK, max(zsz_Constants.MIN_DARK,black_threshold1,black_threshold2,robust))
     # === 写入 debug_stats ===
     if debug_stats is not None:
         debug_stats.update(
@@ -549,7 +549,7 @@ def determine_defect_threshold(
             }
         )
 
-    return threshold,black_threshold2
+    return base,dark_margin
 
 
 
@@ -623,7 +623,8 @@ def run_segmentation_debug(
         debug_dir=diff_dir,
     )
     # 新增：把所有 < 15 的值强制设为 0
-    difference_map = np.where(difference_map < 15, 0, difference_map)
+    from config  import constant
+    difference_map = np.where(difference_map < constant.zsz_Constants.NOICE_GRAY, 0, difference_map)
 
     # 3) 阈值（只看膜内像素，此处即全图）
     print("  ▶ [Step 3 - 阈值计算] 计算缺陷阈值")

@@ -77,20 +77,87 @@ def extract_bounding_boxes(
                         stack.append((ny, nx))
         if pixel_count >= min_pixels:
             ratio = (dark_pixels / pixel_count) if (use_reference and pixel_count) else 0.0
+            # if _is_equivalent_diameter_between_25_50_um(pixel_count):
+            #     if _is_max_diameter_between_30_45_um(
+            #         min_row=min_row,
+            #         max_row=max_row,
+            #         min_col=min_col,
+            #         max_col=max_col,
+            #         um_per_pixel=DefectConfig.UM_PER_PIXEL,
+            #     ):
+            #         boxes.append(
+            #             BoundingBox(
+            #                 top=min_row,
+            #                 left=min_col,
+            #                 bottom=max_row,
+            #                 right=max_col,
+            #                 pixels=pixel_count,
+            #                 dark_pixels = dark_pixels,
+            #                 dark_ratio=ratio,
+            #             )
+            #         )
+            # else:
             boxes.append(
-                BoundingBox(
-                    top=min_row,
-                    left=min_col,
-                    bottom=max_row,
-                    right=max_col,
-                    pixels=pixel_count,
-                    dark_pixels = dark_pixels,
-                    dark_ratio=ratio,
+                    BoundingBox(
+                        top=min_row,
+                        left=min_col,
+                        bottom=max_row,
+                        right=max_col,
+                        pixels=pixel_count,
+                        dark_pixels = dark_pixels,
+                        dark_ratio=ratio,
+                    )
                 )
-            )
     return boxes
 
+import math
+from detect_core.defect_config import DefectConfig
 
+
+def _is_equivalent_diameter_between_25_50_um(
+    pixel_count: int,
+    um_per_pixel: float = DefectConfig.UM_PER_PIXEL,
+) -> bool:
+    """
+    使用缺陷像素面积，计算等效圆直径（Equivalent Circle Diameter, ECD），
+    判断是否在 [25, 50) µm
+
+    语义：Size compute mode = Area（以直径形式表达）
+    """
+    if pixel_count <= 0:
+        return False
+
+    # 像素面积 -> 物理面积 (µm²)
+    area_um2 = pixel_count * (um_per_pixel ** 2)
+
+    # 等效圆直径 (µm)
+    diameter_um = 2.0 * math.sqrt(area_um2 / math.pi)
+
+    return 25.0 <= diameter_um < 50.0
+
+
+def _is_max_diameter_between_30_45_um(
+    min_row: int,
+    max_row: int,
+    min_col: int,
+    max_col: int,
+    um_per_pixel = DefectConfig.UM_PER_PIXEL,
+) -> bool:
+    """
+    判断缺陷的最大直径（bounding box 最大边）是否在 [25, 50) µm
+    对应 Size compute mode = Diameter
+    """
+    # bounding box 尺寸（像素）
+    height_px = max_row - min_row + 1
+    width_px = max_col - min_col + 1
+
+    # 最大直径（像素）
+    max_diameter_px = max(height_px, width_px)
+
+    # 转换为微米
+    max_diameter_um = max_diameter_px * um_per_pixel
+
+    return 30.0 <= max_diameter_um < 45.0
 
 def suppress_dense_clusters(
     mask: np.ndarray,

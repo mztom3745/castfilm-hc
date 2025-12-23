@@ -184,7 +184,9 @@ def build_membrane_mask_grad(
 
     # 4. “中间 10000 像素是膜” + 从中间向两侧 5000 像素往外找高梯度
     center = width // 2
-    half_window = 5000  # 即“最中间的 10000 像素都是膜，中间±5000”
+    from config.constant import zsz_Constants
+
+    half_window = zsz_Constants.BASE_HALF_PIXEL  # 即“最中间的 10000 像素都是膜，中间±5000”
 
     left_boundary, left_bg_mean = _find_left_side(
         high_idx=high_idx,

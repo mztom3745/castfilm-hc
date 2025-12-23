@@ -374,7 +374,8 @@ def determine_defect_threshold(
     median_value = float(np.median(sample))
     mad_value = float(np.median(np.abs(sample - median_value)))
     # percentile_85 = float(np.percentile(sample, 85))
-
+    
+    robust = median_value + 6.0 * (1.4826 * mad_value if mad_value > 0 else 0.0)
     # === 缺陷阈值（保持你当前逻辑）===
     base = min(
         zsz_Constants.MAX_GRAY, 
@@ -450,7 +451,8 @@ def analyze_image(
     timings["membrane_detection"] = perf_counter() - t0
     #新增，裁剪膜宽至8cm,计算方式是
     from config.constant import Constants
-    pix_w = math.ceil((80000 / Constants.UM_PER_PIXEL))
+    from config.constant import zsz_Constants
+    pix_w = math.ceil((zsz_Constants.WIDTH / Constants.UM_PER_PIXEL))
     left, right = membrane_bounds
     current_w = right - left + 1
     if current_w > pix_w:
